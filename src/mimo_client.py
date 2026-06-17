@@ -1,4 +1,5 @@
 import base64
+import json
 import logging
 import os
 
@@ -9,9 +10,9 @@ from openai.types.chat import (
     ChatCompletionMessageParam,
     ChatCompletionUserMessageParam,
 )
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
-from src.schema import TranscriptInsight, TranscriptInsightsResult
+from src.schema import TranscriptInsight
 
 logger = logging.getLogger("phy.mimo")
 
@@ -124,6 +125,14 @@ Rules:
 - The excerpt must be an exact substring from the transcript.
 - Return at most 5 insights, ordered by how useful they are to a learner.
 - If nothing is worth explaining, return an empty insights list.
+
+Respond with a JSON object of this exact shape:
+{
+  "insights": [
+    {"excerpt": "<exact substring from transcript>", "explanation": "<short explanation>", "category": "vocabulary" | "grammar" | "humor" | "cultural_reference"}
+  ]
+}
+Use exactly the keys "excerpt", "explanation", and "category" — no other key names.
 """
 
 
@@ -146,10 +155,10 @@ async def extract_transcript_insights(
     ]
 
     try:
-        completion = await client.chat.completions.parse(
+        completion = await client.chat.completions.create(
             model="mimo-v2.5",
             messages=messages,
-            response_format=TranscriptInsightsResult,
+            response_format={"type": "json_object"},
             max_completion_tokens=1024,
             extra_body={"thinking": {"type": "disabled"}},
         )
@@ -159,13 +168,25 @@ async def extract_transcript_insights(
     if not completion.choices:
         raise MimoError("MiMo insight-extraction response had no choices")
 
-    parsed = completion.choices[0].message.parsed
-
-    if parsed is None:
-        refusal = completion.choices[0].message.refusal
+    raw_content = completion.choices[0].message.content
+    if not raw_content:
         raise MimoError(
-            "MiMo insight-extraction response could not be parsed"
-            + (f": {refusal}" if refusal else "")
+            "MiMo insight-extraction response had no message content"
         )
 
-    return parsed.insights
+    try:
+        content: dict = json.loads(raw_content)
+    except json.JSONDecodeError as e:
+        raise MimoError(
+            f"MiMo insight-extraction response was not valid JSON: {e}. "
+            f"Raw content (truncated): {raw_content[:300]!r}"
+        ) from e
+
+    insights = []
+    for insight in content.get("insights", []):
+        try:
+            insights.append(TranscriptInsight.model_validate(insight))
+        except ValidationError as e:
+            logger.warning("Dropping malformed insight: %s (%s)", insight, e)
+
+    return insights
