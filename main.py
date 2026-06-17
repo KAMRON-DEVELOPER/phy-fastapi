@@ -23,7 +23,7 @@ app = FastAPI(title="Phy backend", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "https://phy-react.vercel.app"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
