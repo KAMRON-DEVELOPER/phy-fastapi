@@ -1,6 +1,7 @@
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import AliasGenerator, BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
 
 
 class InsightCategory(StrEnum):
@@ -38,3 +39,8 @@ class TranscriptSegmentResponse(BaseModel):
     end_seconds: float
     transcript: str
     insights: list[TranscriptInsight] = Field(default_factory=list)
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        alias_generator=AliasGenerator(serialization_alias=to_camel),
+    )
