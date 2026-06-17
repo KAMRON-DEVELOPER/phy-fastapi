@@ -159,8 +159,11 @@ async def extract_transcript_insights(
             model="mimo-v2.5",
             messages=messages,
             response_format={"type": "json_object"},
-            max_completion_tokens=1024,
-            extra_body={"thinking": {"type": "disabled"}},
+            max_completion_tokens=4096,
+            extra_body={
+                "asr_options": {"language": "en"},
+                "thinking": {"type": "disabled"},
+            },
         )
     except Exception as e:
         raise MimoError(f"MiMo insight-extraction call failed: {e}") from e
